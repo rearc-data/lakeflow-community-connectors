@@ -848,7 +848,7 @@ external_options_allowlist: "org_id"
 
 ## 6. Setup Steps
 
-### Prerequisites
+## Prerequisites
 bash
 # 1. Clone the repo
 git clone https://github.com/databrickslabs/lakeflow-community-connectors.git
