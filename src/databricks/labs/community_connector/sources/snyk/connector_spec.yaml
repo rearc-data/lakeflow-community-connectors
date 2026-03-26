@@ -1,0 +1,19 @@
+display_name: Snyk
+connection:
+  parameters:
+    - name: token
+      type: string
+      required: true
+      secret: true
+      description: >
+        Snyk API token. Prefix NOT required — connector prepends "token ".
+        Create at: Account Settings → General → Auth Token.
+
+    - name: api_base_url
+      type: string
+      required: false
+      description: >
+        Override Snyk REST API base URL. Defaults to https://api.snyk.io/rest.
+        Use for Snyk Single Tenant deployments.
+
+external_options_allowlist: "org_id"
