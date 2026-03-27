@@ -1,0 +1,28 @@
+display_name: Wiz
+connection:
+  parameters:
+    - name: wiz_client_id
+      type: string
+      required: true
+      secret: true
+      description: Wiz OAuth2 client ID (Service Account)
+
+    - name: wiz_client_secret
+      type: string
+      required: true
+      secret: true
+      description: Wiz OAuth2 client secret
+
+    - name: wiz_api_endpoint
+      type: string
+      required: true
+      description: >
+        Wiz GraphQL API endpoint, e.g. https://<tenant>.api.wiz.io/graphql
+
+    - name: wiz_auth_url
+      type: string
+      required: false
+      description: >
+        Wiz OAuth2 token URL. Defaults to https://auth.app.wiz.io/oauth/token
+
+external_options_allowlist: ""
