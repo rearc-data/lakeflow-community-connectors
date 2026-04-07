@@ -12,8 +12,9 @@ connection:
   parameters:
     - name: config_json
       type: string
-      required: true
+      required: false
       description: Config
+      
     - name: base_url
       type: string
       required: false
