@@ -1,6 +1,6 @@
 from pyspark.sql.types import *
 
-SUPPORTED_TABLES = ["organizations", "projects", "issues", "targets", "users", "vulnerabilities"]
+SUPPORTED_TABLES = ["organizations", "projects", "issues", "targets", "users", "vulnerabilities", "events"]
 
 TABLE_SCHEMAS = {
     "organizations": StructType([
@@ -62,6 +62,34 @@ TABLE_SCHEMAS = {
         StructField("organization_id", StringType(), True),
         StructField("project_id", StringType(), True),
     ]),
+    "events": StructType([
+        StructField("id", StringType(), False),
+        StructField("title", StringType(), True),
+        StructField("severity", StringType(), True),
+        StructField("cvss_score", DoubleType(), True),
+        StructField("language", StringType(), True),
+        StructField("package_name", StringType(), True),
+        StructField("module_name", StringType(), True),
+        StructField("package_manager", StringType(), True),
+        StructField("version", StringType(), True),
+        StructField("primary_fixed_version", StringType(), True),
+        StructField("fixed_in", StringType(), True),
+        StructField("cve_ids", StringType(), True),
+        StructField("exploit", StringType(), True),
+        StructField("org", StringType(), True),
+        StructField("project_name", StringType(), True),
+        StructField("path", StringType(), True),
+        StructField("is_upgradable", BooleanType(), True),
+        StructField("is_patchable", BooleanType(), True),
+        StructField("is_pinnable", BooleanType(), True),
+        StructField("malicious", BooleanType(), True),
+        StructField("disclosure_time", StringType(), True),
+        StructField("publication_time", StringType(), True),
+        StructField("creation_time", StringType(), True),
+        StructField("modification_time", StringType(), True),
+        StructField("event_type", StringType(), True),
+        StructField("description", StringType(), True),
+    ]),
 }
 
 TABLE_METADATA = {
@@ -87,6 +115,10 @@ TABLE_METADATA = {
         "primary_keys": ["id"],
     },
     "vulnerabilities": {
+        "ingestion_type": "snapshot",
+        "primary_keys": ["id"],
+    },
+    "events": {
         "ingestion_type": "snapshot",
         "primary_keys": ["id"],
     },

@@ -3,6 +3,11 @@
   "objects": [
     {
       "table": {
+        "source_table": "events"
+      }
+    },
+    {
+      "table": {
         "source_table": "organizations"
       }
     },
@@ -10,7 +15,7 @@
       "table": {
         "source_table": "projects",
         "table_configuration": {
-          "org_id": "<YOUR_ORG_UUID>"
+          "org_id": ""
         }
       }
     },
@@ -18,7 +23,7 @@
       "table": {
         "source_table": "issues",
         "table_configuration": {
-          "org_id": "<YOUR_ORG_UUID>"
+          "org_id": ""
         }
       }
     },
@@ -26,7 +31,7 @@
       "table": {
         "source_table": "targets",
         "table_configuration": {
-          "org_id": "<YOUR_ORG_UUID>"
+          "org_id": ""
         }
       }
     },
@@ -34,7 +39,7 @@
       "table": {
         "source_table": "users",
         "table_configuration": {
-          "org_id": "<YOUR_ORG_UUID>"
+          "org_id": ""
         }
       }
     },
@@ -42,7 +47,7 @@
       "table": {
         "source_table": "vulnerabilities",
         "table_configuration": {
-          "org_id": "<YOUR_ORG_UUID>"
+          "org_id": ""
         }
       }
     }

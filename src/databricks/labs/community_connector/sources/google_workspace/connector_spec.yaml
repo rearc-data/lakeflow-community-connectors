@@ -1,0 +1,42 @@
+display_name: Google Workspace
+
+connection:
+  parameters:
+    - name: service_account_json
+      type: string
+      required: true
+      secret: true
+      description: >
+        Full contents of the Google Service Account JSON key file (as a single-line string).
+        The service account must have Domain-Wide Delegation enabled in Google Admin Console
+        with the following OAuth scopes:
+          https://www.googleapis.com/auth/admin.directory.user.readonly
+          https://www.googleapis.com/auth/admin.directory.group.readonly
+          https://www.googleapis.com/auth/admin.directory.orgunit.readonly
+          https://www.googleapis.com/auth/admin.directory.rolemanagement.readonly
+        Pass "mock" to use the in-memory mock API for demos and testing.
+
+    - name: admin_email
+      type: string
+      required: false
+      description: >
+        Email address of a Google Workspace super-admin used for domain-wide delegation.
+        Required when using a real service account. Omit in mock mode.
+
+    - name: customer_id
+      type: string
+      required: false
+      description: >
+        Google Workspace customer ID (e.g. C0abc1234). Defaults to "my_customer"
+        which resolves to the customer of the authenticated admin. Find it in
+        Admin Console → Account → Account Settings.
+
+    - name: domain
+      type: string
+      required: false
+      description: >
+        Primary domain of the Workspace account (e.g. acme-corp.com).
+        If set, user and group queries are scoped to this domain.
+        If omitted, customer_id is used instead.
+
+external_options_allowlist: ""

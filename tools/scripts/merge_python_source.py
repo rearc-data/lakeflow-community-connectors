@@ -719,6 +719,13 @@ def merge_files(source_name: str, output_path: Optional[Path] = None) -> str:
     all_import_lists.extend([source_imports, lakeflow_imports])
     all_imports, alias_assignments = deduplicate_imports(all_import_lists)
 
+    # from __future__ imports must be the very first statements in the file.
+    # The deduplicator may place them after stdlib imports, so hoist them now.
+    future_imps = [i for i in all_imports if i.strip().startswith("from __future__")]
+    other_imps = [i for i in all_imports if not i.strip().startswith("from __future__")]
+    if future_imps:
+        all_imports = future_imps + ([""] if other_imps else []) + other_imps
+
     # Build the merged content
     merged_lines = []
 
