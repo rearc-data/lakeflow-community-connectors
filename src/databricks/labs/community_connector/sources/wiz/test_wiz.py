@@ -18,7 +18,7 @@ options = {
 connector = WizLakeflowConnect(options)
 
 rows_iter, end_offset = connector.read_table(
-    table_name="events",
+    table_name="wiz_api_events",
     start_offset=None,
     table_options={}
 )
@@ -32,7 +32,7 @@ print("First row:", rows[0])
 
 
 rows_iter2, end_offset2 = connector.read_table(
-    table_name="events",
+    table_name="wiz_api_events",
     start_offset=end_offset,
     table_options={}
 )

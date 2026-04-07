@@ -9,7 +9,7 @@ class GraphQLClientError(RuntimeError):
     """Raised when OAuth or GraphQL requests fail."""
 
 
-@dataclass(slots=True)x
+@dataclass(slots=True)
 class WizGraphQLClientMock:
     """Production GraphQL client for the Wiz API."""
 

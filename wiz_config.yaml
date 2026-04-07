@@ -1,0 +1,14 @@
+# my_config.yaml
+workspace_path: "/Users/{CURRENT_USER}/.lakeflow_community_connectors/{PIPELINE_NAME}"
+
+repo:
+  url: https://github.com/rearc-data/lakeflow-community-connectors.git
+  branch: feature/wiz_connector
+
+pipeline:
+  serverless: true
+  development: true
+
+connection:
+  # Additional options to include in externalOptionsAllowList for all connectors
+  external_options_allowlist: "tableName,tableNameList,isDeleteFlow"

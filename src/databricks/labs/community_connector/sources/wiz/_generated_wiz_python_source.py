@@ -545,7 +545,7 @@ def register_lakeflow_source(spark):
     connector = WizLakeflowConnect(options)
 
     rows_iter, end_offset = connector.read_table(
-        table_name="events",
+        table_name="wiz_api_events",
         start_offset=None,
         table_options={}
     )
@@ -559,7 +559,7 @@ def register_lakeflow_source(spark):
 
 
     rows_iter2, end_offset2 = connector.read_table(
-        table_name="events",
+        table_name="wiz_api_events",
         start_offset=end_offset,
         table_options={}
     )
@@ -769,7 +769,7 @@ def register_lakeflow_source(spark):
         """Raised when OAuth or GraphQL requests fail."""
 
 
-    @dataclass(slots=True)x
+    @dataclass(slots=True)
     class WizGraphQLClientMock:
         """Production GraphQL client for the Wiz API."""
 
@@ -1248,7 +1248,7 @@ def register_lakeflow_source(spark):
             self._validate_table(table_name)
             now = datetime.now(timezone.utc)
 
-            if table_name == "events":
+            if table_name == "wiz_api_events":
                 return self._read_all_events(start_offset, now)
             else:
                 raise ValueError(f"Unsupported table: {table_name}")

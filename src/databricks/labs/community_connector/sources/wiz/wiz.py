@@ -114,7 +114,7 @@ class WizLakeflowConnect(LakeflowConnect):
         self._validate_table(table_name)
         now = datetime.now(timezone.utc)
 
-        if table_name == "events":
+        if table_name == "wiz_api_events":
             return self._read_all_events(start_offset, now)
         else:
             raise ValueError(f"Unsupported table: {table_name}")
