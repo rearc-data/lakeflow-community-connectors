@@ -16,10 +16,6 @@ from pyspark.sql.types import (
     TimestampType,
 )
 
-# wiz_schemas.py
-
-from pyspark.sql.types import StructType, StructField, StringType
-
 # ── Bronze table schema — same 4 columns for all 4 Wiz tables ────────────────
 # id           : the Wiz record ID (issue-123, vuln-456, etc.)
 # event_type   : "issue" | "vulnerability_finding" | "audit_log" | "detection"
@@ -32,6 +28,7 @@ BRONZE_SCHEMA = StructType([
     StructField("collected_at", TimestampType(), True),
     StructField("event_type", StringType(), True),
     StructField("record_id", StringType(), True),
+    StructField("_metadata", StringType(), True),
 ])
 
 # ── Tables exposed by this connector ─────────────────────────────────────────
@@ -121,7 +118,7 @@ query AuditLogTable($first: Int, $after: String, $filterBy: AuditLogEntryFilters
 }
 """
 
-DETECTIONS_QUERY = DETECTIONS_QUERY = """
+DETECTIONS_QUERY = """
 query Detections($filterBy: DetectionFilters, $first: Int, $after: String, $orderBy: DetectionOrder, $includeTriggeringEvents: Boolean = true) {
   detections(filterBy: $filterBy, first: $first, after: $after, orderBy: $orderBy, enforceTimestampContinuity: true) {
     nodes {

@@ -5,8 +5,6 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import Iterator, Optional, List
 import hashlib
-
-
 from pyspark.sql.types import StructType
 
 from .wiz_client import get_wiz_client
@@ -29,8 +27,10 @@ class WizLakeflowConnect(LakeflowConnect):
         # In local dev / unit tests:  set options["use_mock"] = "true"
         # In the Databricks job UI:   add use_mock = "true" as a task param
         #   to point the entire pipeline at mock data.
-        use_mock = options.get("use_mock", "false").lower() == "true"
+        #use_mock = options.get("use_mock", "false").lower() == "true"
+        self._client = get_mock_wiz_client(options)
 
+        """
         if use_mock:
             self._client = get_mock_wiz_client(options)
             print("[WizLakeflowConnect] Using MOCK client — no real API calls")
@@ -41,7 +41,7 @@ class WizLakeflowConnect(LakeflowConnect):
             #   {"base_url": "...", "client_id": "...", "client_secret": "..."}
             self._client = get_wiz_client(options)
             print(f"[WizLakeflowConnect] Using REAL client → {options.get('base_url')}")
-
+        """
         # ── Config ────────────────────────────────────────────────────────────
         self._portal_url = options.get("portal_base_url", "https://app.wiz.io")
         self._configs    = copy.deepcopy(EVENT_CONFIGS)

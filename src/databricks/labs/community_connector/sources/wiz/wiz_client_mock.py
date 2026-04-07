@@ -1,5 +1,6 @@
-from __future__ import annotations
-import json, time
+#from __future__ import annotations
+import json
+import time
 from dataclasses import dataclass, field
 from typing import Any
 from urllib import error, parse, request as urllib_request
@@ -134,7 +135,7 @@ class WizGraphQLClientMock:
         return parsed
 
 
-def get_mock_wiz_client(options: dict) -> WizGraphQLClient:
+def get_mock_wiz_client(options: dict) -> WizGraphQLClientMock:
     """
     Factory function — mirrors get_api() pattern from the example connector.
 
