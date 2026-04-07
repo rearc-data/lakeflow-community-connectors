@@ -20,7 +20,6 @@ import copy
 import json
 import time
 
-from .wiz_client import get_wiz_client
 from .wiz_client_mock import get_mock_wiz_client
 from .wiz_schemas import BRONZE_SCHEMA, EVENT_CONFIGS, TABLES
 from pyspark.sql import Row
