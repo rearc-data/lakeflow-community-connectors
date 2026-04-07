@@ -7,7 +7,7 @@ from typing import Iterator, Optional, List
 import hashlib
 from pyspark.sql.types import StructType
 
-from .wiz_client import get_wiz_client
+#from .wiz_client import get_wiz_client
 from .wiz_client_mock import get_mock_wiz_client
 from .wiz_schemas import EVENT_CONFIGS, TABLES, BRONZE_SCHEMA
 from databricks.labs.community_connector.interface import LakeflowConnect
