@@ -1,28 +1,51 @@
+# Example Community Connector Spec
+# This file defines the specification for the connector including
+# connection parameters and allowlist options.
+
+# ============================================================================
+# Connection Parameters
+# These are provided when creating the Unity Catalog connection.
+# ============================================================================
 display_name: Wiz
+
 connection:
   parameters:
-    - name: wiz_client_id
-      type: string
-      required: true
-      secret: true
-      description: Wiz OAuth2 client ID (Service Account)
-
-    - name: wiz_client_secret
-      type: string
-      required: true
-      secret: true
-      description: Wiz OAuth2 client secret
-
-    - name: wiz_api_endpoint
-      type: string
-      required: true
-      description: >
-        Wiz GraphQL API endpoint, e.g. https://<tenant>.api.wiz.io/graphql
-
-    - name: wiz_auth_url
+    - name: config_json
       type: string
       required: false
-      description: >
-        Wiz OAuth2 token URL. Defaults to https://auth.app.wiz.io/oauth/token
+      description: Config
+      
+    - name: base_url
+      type: string
+      required: false
+      description: Wiz API base URL
 
+    - name: client_id
+      type: string
+      required: false
+      description: Wiz client ID
+
+    - name: client_secret
+      type: string
+      required: false
+      description: Wiz client secret
+
+    - name: use_mock
+      type: string
+      required: false
+      description: "Set to true to use mock client instead of real Wiz API"
+
+    - name: full_sync
+      type: string
+      required: false
+      description: "Set to true to force full sync"
+    
+
+# ============================================================================
+# External Options Allowlist
+# These table-specific options must be included in the externalOptionsAllowList
+# parameter of the UC connection to allow them to be passed through.
+# Use a comma-separated string of option names.
+# If no table-specific options are needed, set to empty string or omit.
+# ============================================================================
 external_options_allowlist: ""
