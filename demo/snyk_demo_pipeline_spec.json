@@ -8,8 +8,7 @@
         "destination_schema": "bronze",
         "destination_table": "snyk_events",
         "table_configuration": {
-          "org_id": "",
-          "streams": "issues,events,vulnerabilities"
+          "org_id": ""
         }
       }
     }

@@ -26,7 +26,7 @@ _METADATA_BRONZE = StructType(
 DETECTIONS_UNIFIED_SCHEMA = StructType(
     [
         StructField("lw_id", StringType(), False),
-        StructField("time", StringType(), True),
+        StructField("time", TimestampType(), True),
         StructField("team_id", StringType(), True),
         StructField("data", StringType(), True),
         StructField("_raw", StringType(), True),
