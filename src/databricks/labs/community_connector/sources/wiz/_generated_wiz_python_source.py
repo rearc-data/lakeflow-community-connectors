@@ -1589,7 +1589,8 @@ def register_lakeflow_source(spark):
         # ─────────────────────────────────────────────────────────────────────────
         # Shared helpers
         # ─────────────────────────────────────────────────────────────────────────
-        def to_variant(obj) -> VariantVal:
+
+        def to_variant(self, obj) -> VariantVal:
             """Safely convert a dict/value to VariantVal for VariantType columns."""
             encoded = json.dumps(obj if obj is not None else {}, default=str).encode("utf-8")
             return VariantVal(encoded, b"")   # 👈 second arg is metadata bytes, pass empty bytes
