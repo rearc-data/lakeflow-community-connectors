@@ -127,30 +127,45 @@ class SnykLakeflowConnect(LakeflowConnect):
             return str(payload.get("updated_at") or payload.get("created_at") or "")
         return str(payload.get("publication_time") or payload.get("disclosure_time") or "")
 
+    def _event_time_to_datetime(self, tkey: str):
+        """Parse API time string to UTC datetime for bronze ``time`` (TimestampType)."""
+        if not tkey or not str(tkey).strip():
+            return datetime.now(timezone.utc)
+        ts = str(tkey).replace("Z", "+00:00")
+        try:
+            dt = datetime.fromisoformat(ts)
+            if dt.tzinfo is None:
+                return dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+        except ValueError:
+            return datetime.now(timezone.utc)
+
     def _bronze_row_from_payload(self, record_type: str, payload: dict) -> dict:
-        """Build one Lakeflow row: lw_id, time, team_id, data/_raw JSON, _metadata, ingest_time_utc."""
+        """Build one Lakeflow row aligned with UC bronze: VARIANT data/_raw, timestamps, rawstr, _metadata."""
         raw_json = json.dumps(payload, default=str, sort_keys=True)
         rid = str(payload.get("id", ""))
         tkey = self._time_key_for_record(record_type, payload)
         lw_id = hashlib.sha256(f"{rid}|{tkey}".encode()).hexdigest()
         team = str(payload.get("org") or payload.get("organization_id") or "")
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        time_dt = self._event_time_to_datetime(tkey)
+        now_dt = datetime.now(timezone.utc)
         meta = {
             "file_path": f"snyk://detections/{record_type}/{rid}",
             "file_name": "snyk_events",
             "file_size": 0,
             "file_block_start": 0,
             "file_block_length": 0,
-            "file_modification_time": now,
+            "file_modification_time": now_dt,
         }
         return {
             "lw_id": lw_id,
-            "time": tkey,
+            "time": time_dt,
             "team_id": team,
             "data": raw_json,
             "_raw": raw_json,
+            "rawstr": raw_json,
             "_metadata": meta,
-            "ingest_time_utc": now,
+            "ingest_time_utc": now_dt,
         }
 
     def _paginate_rest(self, url: str, params: dict) -> list[dict]:

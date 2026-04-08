@@ -1,4 +1,13 @@
-from pyspark.sql.types import *
+from pyspark.sql.types import (
+    BooleanType,
+    DoubleType,
+    LongType,
+    StringType,
+    StructField,
+    StructType,
+    TimestampType,
+    VariantType,
+)
 
 SUPPORTED_TABLES = [
     "detections_unified",
@@ -18,20 +27,21 @@ _METADATA_BRONZE = StructType(
         StructField("file_size", LongType(), True),
         StructField("file_block_start", LongType(), True),
         StructField("file_block_length", LongType(), True),
-        StructField("file_modification_time", StringType(), True),
+        StructField("file_modification_time", TimestampType(), True),
     ]
 )
 
-# Single-stream bronze for Lakeflow → cyber_prod.bronze.snyk_events (JSON strings for VARIANT-like payloads).
+# Single-stream bronze for Lakeflow → cyber_prod.bronze.snyk_events (matches Lakewatch bronze: VARIANT + timestamps + rawstr).
 DETECTIONS_UNIFIED_SCHEMA = StructType(
     [
         StructField("lw_id", StringType(), False),
         StructField("time", TimestampType(), True),
         StructField("team_id", StringType(), True),
-        StructField("data", StringType(), True),
-        StructField("_raw", StringType(), True),
+        StructField("data", VariantType(), True),
+        StructField("_raw", VariantType(), True),
+        StructField("rawstr", StringType(), True),
         StructField("_metadata", _METADATA_BRONZE, True),
-        StructField("ingest_time_utc", StringType(), True),
+        StructField("ingest_time_utc", TimestampType(), True),
     ]
 )
 

@@ -27,8 +27,26 @@ from pyspark.sql.datasource import (
     InputPartition,
     SimpleDataSourceStreamReader,
 )
+from pyspark.sql.types import (
+    ArrayType,
+    BinaryType,
+    BooleanType,
+    DataType,
+    DateType,
+    DecimalType,
+    DoubleType,
+    FloatType,
+    IntegerType,
+    LongType,
+    MapType,
+    StringType,
+    StructField,
+    StructType,
+    TimestampType,
+    VariantType,
+    VariantVal,
+)
 from urllib.parse import parse_qs, urlparse
-from pyspark.sql.types import *
 import base64
 import hashlib
 import uuid
@@ -795,20 +813,21 @@ def register_lakeflow_source(spark):
             StructField("file_size", LongType(), True),
             StructField("file_block_start", LongType(), True),
             StructField("file_block_length", LongType(), True),
-            StructField("file_modification_time", StringType(), True),
+            StructField("file_modification_time", TimestampType(), True),
         ]
     )
 
-    # Single-stream bronze for Lakeflow → cyber_prod.bronze.snyk_events (JSON strings for VARIANT-like payloads).
+    # Single-stream bronze for Lakeflow → cyber_prod.bronze.snyk_events (matches Lakewatch bronze: VARIANT + timestamps + rawstr).
     DETECTIONS_UNIFIED_SCHEMA = StructType(
         [
             StructField("lw_id", StringType(), False),
-            StructField("time", StringType(), True),
+            StructField("time", TimestampType(), True),
             StructField("team_id", StringType(), True),
-            StructField("data", StringType(), True),
-            StructField("_raw", StringType(), True),
+            StructField("data", VariantType(), True),
+            StructField("_raw", VariantType(), True),
+            StructField("rawstr", StringType(), True),
             StructField("_metadata", _METADATA_BRONZE, True),
-            StructField("ingest_time_utc", StringType(), True),
+            StructField("ingest_time_utc", TimestampType(), True),
         ]
     )
 
@@ -1061,30 +1080,45 @@ def register_lakeflow_source(spark):
                 return str(payload.get("updated_at") or payload.get("created_at") or "")
             return str(payload.get("publication_time") or payload.get("disclosure_time") or "")
 
+        def _event_time_to_datetime(self, tkey: str):
+            """Parse API time string to UTC datetime for bronze ``time`` (TimestampType)."""
+            if not tkey or not str(tkey).strip():
+                return datetime.now(timezone.utc)
+            ts = str(tkey).replace("Z", "+00:00")
+            try:
+                dt = datetime.fromisoformat(ts)
+                if dt.tzinfo is None:
+                    return dt.replace(tzinfo=timezone.utc)
+                return dt.astimezone(timezone.utc)
+            except ValueError:
+                return datetime.now(timezone.utc)
+
         def _bronze_row_from_payload(self, record_type: str, payload: dict) -> dict:
-            """Build one Lakeflow row: lw_id, time, team_id, data/_raw JSON, _metadata, ingest_time_utc."""
+            """Build one Lakeflow row aligned with UC bronze: VARIANT data/_raw, timestamps, rawstr, _metadata."""
             raw_json = json.dumps(payload, default=str, sort_keys=True)
             rid = str(payload.get("id", ""))
             tkey = self._time_key_for_record(record_type, payload)
             lw_id = hashlib.sha256(f"{rid}|{tkey}".encode()).hexdigest()
             team = str(payload.get("org") or payload.get("organization_id") or "")
-            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+            time_dt = self._event_time_to_datetime(tkey)
+            now_dt = datetime.now(timezone.utc)
             meta = {
                 "file_path": f"snyk://detections/{record_type}/{rid}",
                 "file_name": "snyk_events",
                 "file_size": 0,
                 "file_block_start": 0,
                 "file_block_length": 0,
-                "file_modification_time": now,
+                "file_modification_time": now_dt,
             }
             return {
                 "lw_id": lw_id,
-                "time": tkey,
+                "time": time_dt,
                 "team_id": team,
                 "data": raw_json,
                 "_raw": raw_json,
+                "rawstr": raw_json,
                 "_metadata": meta,
-                "ingest_time_utc": now,
+                "ingest_time_utc": now_dt,
             }
 
         def _paginate_rest(self, url: str, params: dict) -> list[dict]:

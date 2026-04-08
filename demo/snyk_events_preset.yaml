@@ -1,8 +1,8 @@
 # Snyk Lakewatch / DASL preset — silver + gold on top of UC Delta bronze.
 #
 # Bronze contract (Lakeflow ``detections_unified`` → ``cyber_prod.bronze.snyk_events``):
-#   lw_id, time (ISO string), team_id, data (JSON string), _raw (JSON string), _metadata, ingest_time_utc (ISO string)
-# Lakewatch parses JSON strings with parse_json in preTransform so ``_raw`` is VARIANT for path expressions.
+#   lw_id, time (timestamp), team_id, data (VARIANT), _raw (VARIANT), rawstr (string JSON), _metadata (struct), ingest_time_utc (timestamp)
+# preTransform normalizes ``_raw`` for silver path expressions (VARIANT or parse_json(rawstr)).
 #
 # Streams merged in connector: issues, events, vulnerabilities — each row includes ``record_type``.
 # Gold targets OCSF class 2002 (Vulnerability Finding). Coalesce/defaults avoid nulls in emitted columns.
@@ -25,12 +25,12 @@ bronze:
   loadAsSingleVariant: false
   preTransform:
     - [
-        "parse_json(COALESCE(_raw, data)) as _raw",
+        "coalesce(_raw, parse_json(coalesce(rawstr, '{}'))) as _raw",
         "lw_id",
-        "coalesce(try_to_timestamp(time), try_to_timestamp(ingest_time_utc), current_timestamp()) as time",
+        "coalesce(time, ingest_time_utc, current_timestamp()) as time",
         "coalesce(team_id, '') as team_id",
         "_metadata",
-        "coalesce(try_to_timestamp(ingest_time_utc), current_timestamp()) as ingested_at",
+        "coalesce(ingest_time_utc, current_timestamp()) as ingested_at",
         "'snyk_lakeflow' as source",
         "lw_id as run_id",
         "coalesce(_raw:record_type::string, '') as record_type",
