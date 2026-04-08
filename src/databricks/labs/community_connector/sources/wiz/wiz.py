@@ -541,7 +541,8 @@ class WizLakeflowConnect(LakeflowConnect):
             rows.append({
                 "lw_id": lw_id,
                 "time": time_val,
-                "_raw_json": json.dumps(n, default=str),      
+                #"_raw_json": json.dumps(n, default=str),  
+                "_raw_json": n,     
                 "collected_at": collected_at,
                 "event_type": event_type,
                 "record_id": record_id,
