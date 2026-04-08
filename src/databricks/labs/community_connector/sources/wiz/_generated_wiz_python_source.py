@@ -893,7 +893,7 @@ def register_lakeflow_source(spark):
     ])
 
     # ── Tables exposed by this connector ─────────────────────────────────────────-
-    TABLES = ["wiz_security_events_v2"]
+    TABLES = ["wiz_security_events"]
 
     # ── GraphQL queries ───────────────────────────────────────────────────────────
 
@@ -1204,7 +1204,7 @@ def register_lakeflow_source(spark):
             self._validate_table(table_name)
             now = datetime.now(timezone.utc)
 
-            if table_name == "wiz_security_events_v2":
+            if table_name == "wiz_security_events":
                 return self._read_all_events(start_offset, now)
             else:
                 raise ValueError(f"Unsupported table: {table_name}")
