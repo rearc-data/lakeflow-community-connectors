@@ -27,10 +27,10 @@ class WizLakeflowConnect(LakeflowConnect):
         # In local dev / unit tests:  set options["use_mock"] = "true"
         # In the Databricks job UI:   add use_mock = "true" as a task param
         #   to point the entire pipeline at mock data.
-        #use_mock = options.get("use_mock", "false").lower() == "true"
-        self._client = get_mock_wiz_client(options)
+        use_mock = options.get("use_mock", "false").lower() == "true"
+        #self._client = get_mock_wiz_client(options)
 
-        """
+        
         if use_mock:
             self._client = get_mock_wiz_client(options)
             print("[WizLakeflowConnect] Using MOCK client — no real API calls")
@@ -41,7 +41,7 @@ class WizLakeflowConnect(LakeflowConnect):
             #   {"base_url": "...", "client_id": "...", "client_secret": "..."}
             self._client = get_wiz_client(options)
             print(f"[WizLakeflowConnect] Using REAL client → {options.get('base_url')}")
-        """
+        
         # ── Config ────────────────────────────────────────────────────────────
         self._portal_url = options.get("portal_base_url", "https://app.wiz.io")
         self._configs    = copy.deepcopy(EVENT_CONFIGS)
@@ -114,7 +114,7 @@ class WizLakeflowConnect(LakeflowConnect):
         self._validate_table(table_name)
         now = datetime.now(timezone.utc)
 
-        if table_name == "wiz_api_events":
+        if table_name == "wiz_events":
             return self._read_all_events(start_offset, now)
         else:
             raise ValueError(f"Unsupported table: {table_name}")
