@@ -885,7 +885,7 @@ def register_lakeflow_source(spark):
     BRONZE_SCHEMA = StructType([
         StructField("lw_id", StringType(), True),
         StructField("time", TimestampType(), True),
-        StructField("_raw_json", VariantType(), True),  # or Variant if supported
+        StructField("_raw_json", StringType(), True), 
         StructField("collected_at", TimestampType(), True),
         StructField("event_type", StringType(), True),
         StructField("record_id", StringType(), True),
@@ -893,7 +893,7 @@ def register_lakeflow_source(spark):
     ])
 
     # ── Tables exposed by this connector ─────────────────────────────────────────
-    TABLES = ["wiz_security_events_v2"]
+    TABLES = ["wiz_security_events"]
 
     # ── GraphQL queries ───────────────────────────────────────────────────────────
 
@@ -1204,7 +1204,7 @@ def register_lakeflow_source(spark):
             self._validate_table(table_name)
             now = datetime.now(timezone.utc)
 
-            if table_name == "wiz_security_events_v2":
+            if table_name == "wiz_security_events":
                 return self._read_all_events(start_offset, now)
             else:
                 raise ValueError(f"Unsupported table: {table_name}")
@@ -1590,10 +1590,6 @@ def register_lakeflow_source(spark):
         # Shared helpers
         # ─────────────────────────────────────────────────────────────────────────
 
-        def to_variant(self, obj) -> VariantVal:
-            """Safely convert a dict/value to VariantVal for VariantType columns."""
-            encoded = json.dumps(obj if obj is not None else {}, default=str).encode("utf-8")
-            return VariantVal(encoded, b"")   # 👈 second arg is metadata bytes, pass empty bytes
 
         def _to_bronze(self, nodes: list[dict], collected_at: datetime) -> list[dict]:
             rows = []
@@ -1636,9 +1632,7 @@ def register_lakeflow_source(spark):
                 rows.append({
                     "lw_id": lw_id,
                     "time": time_val,
-                    #"_raw_json": json.dumps(n, default=str),  
-                    #"_raw_json": VariantVal(json.dumps(n, default=str).encode("utf-8")),   
-                    "_raw_json": self.to_variant(n),
+                    "_raw_json": json.dumps(n, default=str),  
                     "collected_at": collected_at,
                     "event_type": event_type,
                     "record_id": record_id,

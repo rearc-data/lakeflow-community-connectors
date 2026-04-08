@@ -5,7 +5,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import Iterator, Optional, List
 import hashlib
-from pyspark.sql.types import StructType, VariantVal
+from pyspark.sql.types import StructType
 
 #from .wiz_client import get_wiz_client
 from .wiz_client_mock import get_mock_wiz_client
@@ -114,7 +114,7 @@ class WizLakeflowConnect(LakeflowConnect):
         self._validate_table(table_name)
         now = datetime.now(timezone.utc)
 
-        if table_name == "wiz_security_events_v2":
+        if table_name == "wiz_security_events":
             return self._read_all_events(start_offset, now)
         else:
             raise ValueError(f"Unsupported table: {table_name}")
@@ -500,10 +500,6 @@ class WizLakeflowConnect(LakeflowConnect):
     # Shared helpers
     # ─────────────────────────────────────────────────────────────────────────
 
-    def to_variant(self, obj) -> VariantVal:
-        """Safely convert a dict/value to VariantVal for VariantType columns."""
-        encoded = json.dumps(obj if obj is not None else {}, default=str).encode("utf-8")
-        return VariantVal(encoded, b"")   # 👈 second arg is metadata bytes, pass empty bytes
 
     def _to_bronze(self, nodes: list[dict], collected_at: datetime) -> list[dict]:
         rows = []
@@ -546,9 +542,7 @@ class WizLakeflowConnect(LakeflowConnect):
             rows.append({
                 "lw_id": lw_id,
                 "time": time_val,
-                #"_raw_json": json.dumps(n, default=str),  
-                #"_raw_json": VariantVal(json.dumps(n, default=str).encode("utf-8")),   
-                "_raw_json": self.to_variant(n),
+                "_raw_json": json.dumps(n, default=str),  
                 "collected_at": collected_at,
                 "event_type": event_type,
                 "record_id": record_id,
