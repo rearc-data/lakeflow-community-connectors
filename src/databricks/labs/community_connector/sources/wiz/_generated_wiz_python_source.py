@@ -1589,6 +1589,10 @@ def register_lakeflow_source(spark):
         # ─────────────────────────────────────────────────────────────────────────
         # Shared helpers
         # ─────────────────────────────────────────────────────────────────────────
+        def to_variant(obj) -> VariantVal:
+            """Safely convert a dict/value to VariantVal for VariantType columns."""
+            encoded = json.dumps(obj if obj is not None else {}, default=str).encode("utf-8")
+            return VariantVal(encoded, b"")   # 👈 second arg is metadata bytes, pass empty bytes
 
         def _to_bronze(self, nodes: list[dict], collected_at: datetime) -> list[dict]:
             rows = []
@@ -1632,7 +1636,8 @@ def register_lakeflow_source(spark):
                     "lw_id": lw_id,
                     "time": time_val,
                     #"_raw_json": json.dumps(n, default=str),  
-                    "_raw_json": VariantVal(json.dumps(n, default=str).encode("utf-8")),    
+                    #"_raw_json": VariantVal(json.dumps(n, default=str).encode("utf-8")),   
+                    "_raw_json": self.to_variant(n),
                     "collected_at": collected_at,
                     "event_type": event_type,
                     "record_id": record_id,
