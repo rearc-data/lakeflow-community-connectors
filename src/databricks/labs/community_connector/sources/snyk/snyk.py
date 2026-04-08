@@ -1,5 +1,7 @@
+import hashlib
 import json
 import time
+from datetime import datetime, timezone
 from typing import Iterator
 from pyspark.sql.types import StructType
 from databricks.labs.community_connector.interface import LakeflowConnect
@@ -67,6 +69,7 @@ class SnykLakeflowConnect(LakeflowConnect):
         self, table_name: str, start_offset: dict, table_options: dict
     ) -> tuple[Iterator[dict], dict]:
         dispatch = {
+            "detections_unified": self._read_detections_unified,
             "organizations": self._read_organizations,
             "projects": self._read_projects,
             "issues": self._read_issues,
@@ -78,6 +81,77 @@ class SnykLakeflowConnect(LakeflowConnect):
         if table_name not in dispatch:
             raise ValueError(f"Unsupported table: {table_name!r}")
         return dispatch[table_name](start_offset, table_options)
+
+    def _read_detections_unified(self, start_offset: dict, table_options: dict):
+        """Single snapshot stream for detections: issues, events, vulnerabilities → bronze-shaped rows.
+
+        Each row matches ``detections_unified`` schema (JSON in ``data`` / ``_raw`` for downstream VARIANT cast).
+        Configure ``streams`` in table_configuration (comma-separated), default
+        ``issues,events,vulnerabilities``.
+        """
+        return self._iter_detections_unified(table_options), {}
+
+    def _iter_detections_unified(self, table_options: dict):
+        streams_raw = table_options.get("streams", "issues,events,vulnerabilities")
+        if isinstance(streams_raw, str):
+            streams = [x.strip() for x in streams_raw.split(",") if x.strip()]
+        else:
+            streams = list(streams_raw)
+        preferred_order = ("events", "issues", "vulnerabilities")
+        streams = [s for s in preferred_order if s in streams]
+
+        for name in streams:
+            if name == "events":
+                records, _ = self._read_events({}, table_options)
+                for row in records:
+                    payload = dict(row)
+                    payload["record_type"] = "event"
+                    yield self._bronze_row_from_payload("event", payload)
+            elif name == "issues":
+                records, _ = self._read_issues({}, table_options)
+                for row in records:
+                    payload = dict(row)
+                    payload["record_type"] = "issue"
+                    yield self._bronze_row_from_payload("issue", payload)
+            elif name == "vulnerabilities":
+                records, _ = self._read_vulnerabilities({}, table_options)
+                for row in records:
+                    payload = dict(row)
+                    payload["record_type"] = "vulnerability"
+                    yield self._bronze_row_from_payload("vulnerability", payload)
+
+    def _time_key_for_record(self, record_type: str, payload: dict) -> str:
+        if record_type == "event":
+            return str(payload.get("modification_time") or payload.get("creation_time") or "")
+        if record_type == "issue":
+            return str(payload.get("updated_at") or payload.get("created_at") or "")
+        return str(payload.get("publication_time") or payload.get("disclosure_time") or "")
+
+    def _bronze_row_from_payload(self, record_type: str, payload: dict) -> dict:
+        """Build one Lakeflow row: lw_id, time, team_id, data/_raw JSON, _metadata, ingest_time_utc."""
+        raw_json = json.dumps(payload, default=str, sort_keys=True)
+        rid = str(payload.get("id", ""))
+        tkey = self._time_key_for_record(record_type, payload)
+        lw_id = hashlib.sha256(f"{rid}|{tkey}".encode()).hexdigest()
+        team = str(payload.get("org") or payload.get("organization_id") or "")
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        meta = {
+            "file_path": f"snyk://detections/{record_type}/{rid}",
+            "file_name": "snyk_events",
+            "file_size": 0,
+            "file_block_start": 0,
+            "file_block_length": 0,
+            "file_modification_time": now,
+        }
+        return {
+            "lw_id": lw_id,
+            "time": tkey,
+            "team_id": team,
+            "data": raw_json,
+            "_raw": raw_json,
+            "_metadata": meta,
+            "ingest_time_utc": now,
+        }
 
     def _paginate_rest(self, url: str, params: dict) -> list[dict]:
         """Paginate Snyk REST (JSON:API) using links.next cursor."""

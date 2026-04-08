@@ -1,60 +1,40 @@
 # Snyk Lakewatch / DASL preset — silver + gold on top of UC Delta bronze.
 #
-# Lakewatch ingestion streams from the configured bronze object: it must be a Delta table, not a Materialized View
-# (Spark: STREAMING_FROM_MATERIALIZED_VIEW).
+# Bronze contract (Lakeflow ``detections_unified`` → ``cyber_prod.bronze.snyk_events``):
+#   lw_id, time (ISO string), team_id, data (JSON string), _raw (JSON string), _metadata, ingest_time_utc (ISO string)
+# Lakewatch parses JSON strings with parse_json in preTransform so ``_raw`` is VARIANT for path expressions.
 #
-# Bronze contract (see demo/snyk_medallion_pipeline.py → cyber_prod.bronze.snyk_events):
-#   lw_id, time, team_id, data, _raw, _metadata, ingest_time_utc
-#
-# _raw VARIANT holds one finding per row with SNAKE_CASE keys from Lakeflow connector
-# (e.g. id, org, project_name, package_name, severity, cvss_score, event_type,
-# modification_time, creation_time, cve_ids as JSON string, …).
-#
-# Preview / development:
-#   Point PreviewParameters at the Delta bronze table (or an equivalent batch DataFrame).
-#   Raw JSONL + Autoloader path is optional; set loadAsSingleVariant / autoloader only
-#   if you ingest collector JSONL instead of the medallion bronze table.
-#
-# Example (adjust API to your dasl_client version):
-#   from pathlib import Path
-#   from dasl_client.preset_development import PreviewEngine, PreviewParameters
-#   yaml_string = Path("demo/snyk_events_preset.yaml").read_text()
-#   ds_params = PreviewParameters(spark).from_table("cyber_prod.bronze.snyk_events")  # if supported
-#   ps = PreviewEngine(spark, yaml_string, ds_params)
-#   ps.evaluate("cyber_prod.gold")
+# Streams merged in connector: issues, events, vulnerabilities — each row includes ``record_type``.
+# Gold targets OCSF class 2002 (Vulnerability Finding). Coalesce/defaults avoid nulls in emitted columns.
 
 name: snyk_events
 author: Rearc
-title: Snyk Security Issues
-description: "Datasource processing for Snyk vulnerability and security findings (Lakeflow bronze → silver → OCSF gold)."
+title: Snyk Security Detections
+description: "Snyk unified bronze (issues, events, vulnerabilities) → silver → OCSF gold."
 iconURL: https://res.cloudinary.com/snyk/image/upload/v1537345895/press-kit/brand/avatar-transparent.png
 
 primaryKey:
   timeColumn: time
   additionalColumns:
-    - id
+    - lw_id
 
 autoloader:
   format: jsonl
-  # Used only when PreviewParameters uses a Volume JSONL path.
-  # For cyber_prod.bronze.snyk_events, configure input as that Delta table instead.
 
 bronze:
-  # Bronze Delta already exposes _raw VARIANT + Lakewatch columns (no single-variant JSONL line).
   loadAsSingleVariant: false
   preTransform:
     - [
-        "_raw",
+        "parse_json(COALESCE(_raw, data)) as _raw",
         "lw_id",
-        "time",
-        "ingest_time_utc",
-        "team_id",
+        "coalesce(try_to_timestamp(time), try_to_timestamp(ingest_time_utc), current_timestamp()) as time",
+        "coalesce(team_id, '') as team_id",
         "_metadata",
+        "coalesce(try_to_timestamp(ingest_time_utc), current_timestamp()) as ingested_at",
         "'snyk_lakeflow' as source",
-        "ingest_time_utc as ingested_at",
         "lw_id as run_id",
-        "_raw:id::string as id",
-        "_raw:event_type::string as eventType",
+        "coalesce(_raw:record_type::string, '') as record_type",
+        "coalesce(_raw:id::string, '') as id",
       ]
 
 silver:
@@ -69,52 +49,86 @@ silver:
           from: ingested_at
         - name: run_id
           from: run_id
+        - name: record_type
+          from: record_type
         - name: id
-          expr: _raw:id::string
+          from: id
+        - name: record_type
+          from: record_type
         - name: org
-          expr: coalesce(_raw:org::string, team_id::string)
+          expr: coalesce(_raw:org::string, _raw:organization_id::string, team_id::string, '')
         - name: projectName
-          expr: _raw:project_name::string
+          expr: coalesce(_raw:project_name::string, '')
         - name: packageName
-          expr: _raw:package_name::string
+          expr: |
+            CASE
+              WHEN _raw:record_type::string = 'vulnerability' THEN coalesce(_raw:package::string, '')
+              ELSE coalesce(_raw:package_name::string, '')
+            END
         - name: packageManager
-          expr: _raw:package_manager::string
+          expr: coalesce(_raw:package_manager::string, '')
         - name: severity
-          expr: _raw:severity::string
+          expr: |
+            CASE
+              WHEN _raw:record_type::string = 'issue' THEN coalesce(_raw:effective_severity_level::string, '')
+              ELSE coalesce(_raw:severity::string, '')
+            END
         - name: cvssScore
-          expr: _raw:cvss_score::double
+          expr: coalesce(_raw:cvss_score::double, CAST(0.0 AS DOUBLE))
         - name: exploit
-          expr: _raw:exploit::string
+          expr: coalesce(_raw:exploit::string, '')
         - name: eventType
-          expr: _raw:event_type::string
+          expr: |
+            CASE
+              WHEN _raw:record_type::string = 'issue' THEN coalesce(_raw:type::string, 'issue')
+              ELSE coalesce(_raw:event_type::string, 'package_vulnerability')
+            END
         - name: creationTime
-          expr: try_to_timestamp(_raw:creation_time::string)
+          expr: |
+            coalesce(
+              try_to_timestamp(_raw:creation_time::string),
+              try_to_timestamp(_raw:created_at::string),
+              try_to_timestamp(_raw:publication_time::string),
+              ingested_at
+            )
         - name: modificationTime
-          expr: try_to_timestamp(_raw:modification_time::string)
+          expr: |
+            coalesce(
+              try_to_timestamp(_raw:modification_time::string),
+              try_to_timestamp(_raw:updated_at::string),
+              try_to_timestamp(_raw:publication_time::string),
+              ingested_at
+            )
         - name: identifiers
-          expr: parse_json(coalesce(_raw:cve_ids::string, '[]'))
+          expr: |
+            CASE
+              WHEN length(trim(coalesce(_raw:cve::string, ''))) > 0
+                AND _raw:record_type::string = 'vulnerability'
+                THEN array(trim(_raw:cve::string))
+              ELSE coalesce(from_json(coalesce(_raw:cve_ids::string, '[]'), 'array<string>'), array())
+            END
         - name: isIgnored
-          expr: coalesce(_raw:filtered:ignored::boolean, false)
+          expr: coalesce(_raw:filtered:ignored::boolean, _raw:ignored::boolean, false)
         - name: fixAvailable
           expr: |
             CASE
               WHEN _raw:primary_fixed_version IS NOT NULL THEN TRUE
-              WHEN _raw:fixed_in IS NOT NULL THEN TRUE
+              WHEN length(trim(coalesce(_raw:fixed_in::string, ''))) > 0 THEN TRUE
               ELSE FALSE
             END
         - name: riskDetail
           expr: |
             named_struct(
-              'cvssDetails', _raw:cvss_details::variant,
-              'epssDetails', _raw:epss_details::variant,
-              'exploitDetails', _raw:exploit_details::variant
+              'cvssDetails', coalesce(_raw:cvss_details::variant, parse_json('{}')),
+              'epssDetails', coalesce(_raw:epss_details::variant, parse_json('{}')),
+              'exploitDetails', coalesce(_raw:exploit_details::variant, parse_json('{}'))
             )
         - name: optionalFields
           expr: |
             named_struct(
-              'references', _raw:references::variant,
-              'filtered', _raw:filtered::variant,
-              'description', _raw:description::string
+              'references', coalesce(_raw:references::variant, parse_json('[]')),
+              'filtered', coalesce(_raw:filtered::variant, parse_json('{}')),
+              'description', coalesce(_raw:description::string, '')
             )
         - name: raw_record_json
           expr: to_json(_raw)
@@ -127,32 +141,42 @@ silver:
           from: time
         - name: ingested_at
           from: ingested_at
+        - name: record_type
+          from: record_type
         - name: finding_id
-          expr: _raw:id::string
+          from: id
         - name: org
-          expr: coalesce(_raw:org::string, team_id::string)
+          expr: coalesce(_raw:org::string, _raw:organization_id::string, team_id::string, '')
         - name: projectName
-          expr: _raw:project_name::string
+          expr: coalesce(_raw:project_name::string, '')
         - name: projectId
-          expr: _raw:project_id::string
+          expr: coalesce(_raw:project_id::string, _raw:scan_item_id::string, '')
         - name: packageName
-          expr: _raw:package_name::string
+          expr: |
+            CASE
+              WHEN _raw:record_type::string = 'vulnerability' THEN coalesce(_raw:package::string, '')
+              ELSE coalesce(_raw:package_name::string, '')
+            END
         - name: packageManager
-          expr: _raw:package_manager::string
+          expr: coalesce(_raw:package_manager::string, '')
         - name: severity
-          expr: _raw:severity::string
+          expr: |
+            CASE
+              WHEN _raw:record_type::string = 'issue' THEN coalesce(_raw:effective_severity_level::string, '')
+              ELSE coalesce(_raw:severity::string, '')
+            END
         - name: language
-          expr: _raw:language::string
+          expr: coalesce(_raw:language::string, '')
         - name: displayTargetFile
-          expr: _raw:path::string
+          expr: coalesce(_raw:path::string, '')
         - name: projectAttributes
           expr: |
             named_struct(
-              'path', _raw:path::string,
-              'isUpgradePathAvailable', _raw:is_upgradable::boolean,
-              'isPatchable', _raw:is_patchable::boolean,
-              'isPinnable', _raw:is_pinnable::boolean,
-              'malicious', _raw:malicious::boolean
+              'path', coalesce(_raw:path::string, ''),
+              'isUpgradePathAvailable', coalesce(_raw:is_upgradable::boolean, false),
+              'isPatchable', coalesce(_raw:is_patchable::boolean, false),
+              'isPinnable', coalesce(_raw:is_pinnable::boolean, false),
+              'malicious', coalesce(_raw:malicious::boolean, false)
             )
 
     - name: snyk_identifier_reference_dim
@@ -160,54 +184,72 @@ silver:
         - name: time
           from: time
         - name: finding_id
-          expr: _raw:id::string
+          from: id
         - name: org
-          expr: coalesce(_raw:org::string, team_id::string)
+          expr: coalesce(_raw:org::string, _raw:organization_id::string, team_id::string, '')
         - name: projectName
-          expr: _raw:project_name::string
+          expr: coalesce(_raw:project_name::string, '')
         - name: severity
-          expr: _raw:severity::string
+          expr: |
+            CASE
+              WHEN _raw:record_type::string = 'issue' THEN coalesce(_raw:effective_severity_level::string, '')
+              ELSE coalesce(_raw:severity::string, '')
+            END
         - name: title
-          expr: _raw:title::string
+          expr: coalesce(_raw:title::string, '')
         - name: cveIds
-          expr: from_json(_raw:cve_ids::string, 'array<string>')
+          expr: |
+            CASE
+              WHEN length(trim(coalesce(_raw:cve::string, ''))) > 0
+                AND _raw:record_type::string = 'vulnerability'
+                THEN array(trim(_raw:cve::string))
+              ELSE coalesce(from_json(coalesce(_raw:cve_ids::string, '[]'), 'array<string>'), array())
+            END
         - name: cweIds
-          expr: from_json(_raw:cwe_ids::string, 'array<string>')
+          expr: coalesce(from_json(coalesce(_raw:cwe_ids::string, '[]'), 'array<string>'), array())
         - name: ghsaIds
-          expr: from_json(_raw:ghsa_ids::string, 'array<string>')
+          expr: coalesce(from_json(coalesce(_raw:ghsa_ids::string, '[]'), 'array<string>'), array())
         - name: references
-          expr: from_json(_raw:references::string, 'array<struct<title:string, url:string>>')
+          expr: |
+            coalesce(
+              from_json(coalesce(_raw:references::string, '[]'), 'array<struct<title:string,url:string>>'),
+              array()
+            )
 
     - name: snyk_cvss_enrichment_dim
       fields:
         - name: time
           from: time
         - name: finding_id
-          expr: _raw:id::string
+          from: id
         - name: org
-          expr: coalesce(_raw:org::string, team_id::string)
+          expr: coalesce(_raw:org::string, _raw:organization_id::string, team_id::string, '')
         - name: projectName
-          expr: _raw:project_name::string
+          expr: coalesce(_raw:project_name::string, '')
         - name: severity
-          expr: _raw:severity::string
+          expr: |
+            CASE
+              WHEN _raw:record_type::string = 'issue' THEN coalesce(_raw:effective_severity_level::string, '')
+              ELSE coalesce(_raw:severity::string, '')
+            END
         - name: cvssScore
-          expr: _raw:cvss_score::double
+          expr: coalesce(_raw:cvss_score::double, CAST(0.0 AS DOUBLE))
         - name: exploit
-          expr: _raw:exploit::string
+          expr: coalesce(_raw:exploit::string, '')
         - name: cvssV3Vector
-          expr: get_json_object(_raw:cvss_details::string, '$[0].cvssV3Vector')
+          expr: coalesce(get_json_object(_raw:cvss_details::string, '$[0].cvssV3Vector'), '')
         - name: cvssV3BaseScore
-          expr: get_json_object(_raw:cvss_details::string, '$[0].cvssV3BaseScore')::double
+          expr: coalesce(get_json_object(_raw:cvss_details::string, '$[0].cvssV3BaseScore')::double, CAST(0.0 AS DOUBLE))
         - name: cvssAssigner
-          expr: get_json_object(_raw:cvss_details::string, '$[0].assigner')
+          expr: coalesce(get_json_object(_raw:cvss_details::string, '$[0].assigner'), '')
         - name: epssProbability
-          expr: _raw:epss_details:probability::double
+          expr: coalesce(_raw:epss_details:probability::double, CAST(0.0 AS DOUBLE))
         - name: epssPercentile
-          expr: _raw:epss_details:percentile::double
+          expr: coalesce(_raw:epss_details:percentile::double, CAST(0.0 AS DOUBLE))
         - name: epssModelVersion
-          expr: _raw:epss_details:modelVersion::string
+          expr: coalesce(_raw:epss_details:modelVersion::string, '')
         - name: isIgnored
-          expr: coalesce(_raw:filtered:ignored::boolean, false)
+          expr: coalesce(_raw:filtered:ignored::boolean, _raw:ignored::boolean, false)
 
 gold:
   - name: vulnerability_finding
@@ -257,10 +299,10 @@ gold:
         literal: "0"
 
       - name: severity
-        expr: UPPER(severity)
+        expr: UPPER(coalesce(severity, ''))
       - name: severity_id
         expr: |
-          CASE LOWER(severity)
+          CASE LOWER(coalesce(severity, ''))
             WHEN 'critical' THEN CAST(5 AS INT)
             WHEN 'high' THEN CAST(4 AS INT)
             WHEN 'medium' THEN CAST(3 AS INT)
@@ -291,10 +333,10 @@ gold:
       - name: message
         expr: |
           CONCAT(
-            COALESCE(packageName, 'unknown-package'),
-            ' [', UPPER(COALESCE(severity, 'UNKNOWN')), ']',
-            ' cvss=', COALESCE(CAST(cvssScore AS STRING), '?'),
-            ' in ', COALESCE(projectName, org)
+            COALESCE(NULLIF(trim(packageName), ''), 'unknown-package'),
+            ' [', UPPER(COALESCE(NULLIF(trim(severity), ''), 'UNKNOWN')), ']',
+            ' cvss=', COALESCE(CAST(cvssScore AS STRING), '0'),
+            ' in ', COALESCE(NULLIF(trim(projectName), ''), NULLIF(trim(org), ''), CAST('unknown' AS STRING))
           )
 
       - name: confidence_id
@@ -314,13 +356,13 @@ gold:
           parse_json(to_json(named_struct(
             'uid', id,
             'title', COALESCE(
-              get_json_object(raw_record_json, '$.title'),
-              CONCAT(COALESCE(packageName, ''), ' vulnerability')
+              NULLIF(trim(get_json_object(raw_record_json, '$.title')), ''),
+              CONCAT(COALESCE(NULLIF(trim(packageName), ''), 'package'), ' vulnerability')
             ),
             'desc', CONCAT(
-              COALESCE(packageName, ''), ' @ ',
-              COALESCE(packageManager, ''),
-              ' — severity: ', UPPER(COALESCE(severity, 'UNKNOWN'))
+              COALESCE(NULLIF(trim(packageName), ''), 'package'), ' @ ',
+              COALESCE(NULLIF(trim(packageManager), ''), 'unknown'),
+              ' — severity: ', UPPER(COALESCE(NULLIF(trim(severity), ''), 'UNKNOWN'))
             ),
             'first_seen_time', CAST(unix_timestamp(COALESCE(creationTime, ingested_at)) * 1000 AS BIGINT),
             'last_seen_time', CAST(unix_timestamp(COALESCE(modificationTime, ingested_at)) * 1000 AS BIGINT),
@@ -336,19 +378,20 @@ gold:
           parse_json(to_json(array(named_struct(
             'uid', COALESCE(
               get_json_object(raw_record_json, '$.cve_ids'),
+              get_json_object(raw_record_json, '$.cve'),
               id
             ),
             'desc', COALESCE(get_json_object(raw_record_json, '$.title'), ''),
             'type', COALESCE(eventType, 'package_vulnerability'),
             'fix_available', fixAvailable,
             'is_fix_available', fixAvailable,
-            'exploit_maturity', COALESCE(exploit, 'no-known-exploit'),
+            'exploit_maturity', COALESCE(NULLIF(trim(exploit), ''), 'no-known-exploit'),
             'package', named_struct(
-              'name', COALESCE(packageName, ''),
-              'package_manager', COALESCE(packageManager, '')
+              'name', COALESCE(NULLIF(trim(packageName), ''), ''),
+              'package_manager', COALESCE(NULLIF(trim(packageManager), ''), '')
             ),
             'cve', named_struct(
-              'uid', COALESCE(get_json_object(raw_record_json, '$.cve_ids'), ''),
+              'uid', COALESCE(get_json_object(raw_record_json, '$.cve_ids'), get_json_object(raw_record_json, '$.cve'), id),
               'cvss', array(named_struct(
                 'base_score', COALESCE(cvssScore, CAST(0.0 AS DOUBLE)),
                 'version', '3.1',
@@ -371,10 +414,10 @@ gold:
         expr: |
           parse_json(to_json(array(named_struct(
             'uid', id,
-            'name', COALESCE(projectName, ''),
-            'namespace', COALESCE(org, ''),
+            'name', COALESCE(NULLIF(trim(projectName), ''), ''),
+            'namespace', COALESCE(NULLIF(trim(org), ''), ''),
             'type', 'SnykProject',
-            'labels', array(COALESCE(packageManager, ''))
+            'labels', array(COALESCE(NULLIF(trim(packageManager), ''), ''))
           ))))
 
       - name: metadata
@@ -391,11 +434,12 @@ gold:
             'logged_time', CAST(unix_timestamp(COALESCE(modificationTime, ingested_at)) * 1000 AS BIGINT),
             'process_time', CAST(current_timestamp() AS STRING),
             'run_id', run_id,
-            'lw_id', lw_id
+            'lw_id', lw_id,
+            'record_type', record_type
           )))
 
       - name: src_url
-        expr: get_json_object(raw_record_json, '$.path')
+        expr: COALESCE(get_json_object(raw_record_json, '$.path'), '')
 
       - name: unmapped
         from: raw_record_json

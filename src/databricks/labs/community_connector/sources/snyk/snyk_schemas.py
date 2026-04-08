@@ -1,8 +1,42 @@
 from pyspark.sql.types import *
 
-SUPPORTED_TABLES = ["organizations", "projects", "issues", "targets", "users", "vulnerabilities", "events"]
+SUPPORTED_TABLES = [
+    "detections_unified",
+    "organizations",
+    "projects",
+    "issues",
+    "targets",
+    "users",
+    "vulnerabilities",
+    "events",
+]
+
+_METADATA_BRONZE = StructType(
+    [
+        StructField("file_path", StringType(), True),
+        StructField("file_name", StringType(), True),
+        StructField("file_size", LongType(), True),
+        StructField("file_block_start", LongType(), True),
+        StructField("file_block_length", LongType(), True),
+        StructField("file_modification_time", StringType(), True),
+    ]
+)
+
+# Single-stream bronze for Lakeflow → cyber_prod.bronze.snyk_events (JSON strings for VARIANT-like payloads).
+DETECTIONS_UNIFIED_SCHEMA = StructType(
+    [
+        StructField("lw_id", StringType(), False),
+        StructField("time", StringType(), True),
+        StructField("team_id", StringType(), True),
+        StructField("data", StringType(), True),
+        StructField("_raw", StringType(), True),
+        StructField("_metadata", _METADATA_BRONZE, True),
+        StructField("ingest_time_utc", StringType(), True),
+    ]
+)
 
 TABLE_SCHEMAS = {
+    "detections_unified": DETECTIONS_UNIFIED_SCHEMA,
     "organizations": StructType([
         StructField("id", StringType(), False),
         StructField("name", StringType(), True),
@@ -93,6 +127,10 @@ TABLE_SCHEMAS = {
 }
 
 TABLE_METADATA = {
+    "detections_unified": {
+        "ingestion_type": "snapshot",
+        "primary_keys": ["lw_id"],
+    },
     "organizations": {
         "ingestion_type": "snapshot",
         "primary_keys": ["id"],

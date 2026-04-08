@@ -30,6 +30,7 @@ from pyspark.sql.datasource import (
 from urllib.parse import parse_qs, urlparse
 from pyspark.sql.types import *
 import base64
+import hashlib
 import uuid
 
 
@@ -776,9 +777,43 @@ def register_lakeflow_source(spark):
     # src/databricks/labs/community_connector/sources/snyk/snyk_schemas.py
     ########################################################
 
-    SUPPORTED_TABLES = ["organizations", "projects", "issues", "targets", "users", "vulnerabilities", "events"]
+    SUPPORTED_TABLES = [
+        "detections_unified",
+        "organizations",
+        "projects",
+        "issues",
+        "targets",
+        "users",
+        "vulnerabilities",
+        "events",
+    ]
+
+    _METADATA_BRONZE = StructType(
+        [
+            StructField("file_path", StringType(), True),
+            StructField("file_name", StringType(), True),
+            StructField("file_size", LongType(), True),
+            StructField("file_block_start", LongType(), True),
+            StructField("file_block_length", LongType(), True),
+            StructField("file_modification_time", StringType(), True),
+        ]
+    )
+
+    # Single-stream bronze for Lakeflow → cyber_prod.bronze.snyk_events (JSON strings for VARIANT-like payloads).
+    DETECTIONS_UNIFIED_SCHEMA = StructType(
+        [
+            StructField("lw_id", StringType(), False),
+            StructField("time", StringType(), True),
+            StructField("team_id", StringType(), True),
+            StructField("data", StringType(), True),
+            StructField("_raw", StringType(), True),
+            StructField("_metadata", _METADATA_BRONZE, True),
+            StructField("ingest_time_utc", StringType(), True),
+        ]
+    )
 
     TABLE_SCHEMAS = {
+        "detections_unified": DETECTIONS_UNIFIED_SCHEMA,
         "organizations": StructType([
             StructField("id", StringType(), False),
             StructField("name", StringType(), True),
@@ -869,6 +904,10 @@ def register_lakeflow_source(spark):
     }
 
     TABLE_METADATA = {
+        "detections_unified": {
+            "ingestion_type": "snapshot",
+            "primary_keys": ["lw_id"],
+        },
         "organizations": {
             "ingestion_type": "snapshot",
             "primary_keys": ["id"],
@@ -964,6 +1003,7 @@ def register_lakeflow_source(spark):
             self, table_name: str, start_offset: dict, table_options: dict
         ) -> tuple[Iterator[dict], dict]:
             dispatch = {
+                "detections_unified": self._read_detections_unified,
                 "organizations": self._read_organizations,
                 "projects": self._read_projects,
                 "issues": self._read_issues,
@@ -975,6 +1015,77 @@ def register_lakeflow_source(spark):
             if table_name not in dispatch:
                 raise ValueError(f"Unsupported table: {table_name!r}")
             return dispatch[table_name](start_offset, table_options)
+
+        def _read_detections_unified(self, start_offset: dict, table_options: dict):
+            """Single snapshot stream for detections: issues, events, vulnerabilities → bronze-shaped rows.
+
+            Each row matches ``detections_unified`` schema (JSON in ``data`` / ``_raw`` for downstream VARIANT cast).
+            Configure ``streams`` in table_configuration (comma-separated), default
+            ``issues,events,vulnerabilities``.
+            """
+            return self._iter_detections_unified(table_options), {}
+
+        def _iter_detections_unified(self, table_options: dict):
+            streams_raw = table_options.get("streams", "issues,events,vulnerabilities")
+            if isinstance(streams_raw, str):
+                streams = [x.strip() for x in streams_raw.split(",") if x.strip()]
+            else:
+                streams = list(streams_raw)
+            preferred_order = ("events", "issues", "vulnerabilities")
+            streams = [s for s in preferred_order if s in streams]
+
+            for name in streams:
+                if name == "events":
+                    records, _ = self._read_events({}, table_options)
+                    for row in records:
+                        payload = dict(row)
+                        payload["record_type"] = "event"
+                        yield self._bronze_row_from_payload("event", payload)
+                elif name == "issues":
+                    records, _ = self._read_issues({}, table_options)
+                    for row in records:
+                        payload = dict(row)
+                        payload["record_type"] = "issue"
+                        yield self._bronze_row_from_payload("issue", payload)
+                elif name == "vulnerabilities":
+                    records, _ = self._read_vulnerabilities({}, table_options)
+                    for row in records:
+                        payload = dict(row)
+                        payload["record_type"] = "vulnerability"
+                        yield self._bronze_row_from_payload("vulnerability", payload)
+
+        def _time_key_for_record(self, record_type: str, payload: dict) -> str:
+            if record_type == "event":
+                return str(payload.get("modification_time") or payload.get("creation_time") or "")
+            if record_type == "issue":
+                return str(payload.get("updated_at") or payload.get("created_at") or "")
+            return str(payload.get("publication_time") or payload.get("disclosure_time") or "")
+
+        def _bronze_row_from_payload(self, record_type: str, payload: dict) -> dict:
+            """Build one Lakeflow row: lw_id, time, team_id, data/_raw JSON, _metadata, ingest_time_utc."""
+            raw_json = json.dumps(payload, default=str, sort_keys=True)
+            rid = str(payload.get("id", ""))
+            tkey = self._time_key_for_record(record_type, payload)
+            lw_id = hashlib.sha256(f"{rid}|{tkey}".encode()).hexdigest()
+            team = str(payload.get("org") or payload.get("organization_id") or "")
+            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+            meta = {
+                "file_path": f"snyk://detections/{record_type}/{rid}",
+                "file_name": "snyk_events",
+                "file_size": 0,
+                "file_block_start": 0,
+                "file_block_length": 0,
+                "file_modification_time": now,
+            }
+            return {
+                "lw_id": lw_id,
+                "time": tkey,
+                "team_id": team,
+                "data": raw_json,
+                "_raw": raw_json,
+                "_metadata": meta,
+                "ingest_time_utc": now,
+            }
 
         def _paginate_rest(self, url: str, params: dict) -> list[dict]:
             """Paginate Snyk REST (JSON:API) using links.next cursor."""

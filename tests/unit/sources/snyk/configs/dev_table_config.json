@@ -1,7 +1,6 @@
 {
-  "issues":          { "org_id": "org-mock-0001" },
-  "projects":        { "org_id": "org-mock-0001" },
-  "targets":         { "org_id": "org-mock-0001" },
-  "users":           { "org_id": "org-mock-0001" },
-  "vulnerabilities": { "org_id": "org-mock-0001" }
+  "detections_unified": {
+    "org_id": "",
+    "streams": "issues,events,vulnerabilities"
+  }
 }

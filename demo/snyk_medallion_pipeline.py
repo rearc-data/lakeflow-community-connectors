@@ -1,75 +1,23 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Snyk — Lakewatch-native **Bronze** only
+# MAGIC # Snyk — direct **bronze** via Lakeflow (recommended)
 # MAGIC
-# MAGIC Reads Lakeflow staging (`cyber_prod.snyk.events`) and writes **`cyber_prod.bronze.snyk_events`**
-# MAGIC in the same shape as Lakewatch bronze tables (e.g. `internal_kong`):
+# MAGIC Detection use case: use the **`detections_unified`** connector table so ingestion lands in **one** UC Delta table
+# MAGIC **`cyber_prod.bronze.snyk_events`** (no separate `cyber_prod.snyk.*` staging tables).
 # MAGIC
-# MAGIC | Column | Type | Notes |
-# MAGIC |--------|------|-------|
-# MAGIC | `lw_id` | string | SHA-256(`id` \| `modification_time`) dedup key |
-# MAGIC | `time` | timestamp | From JSON `modification_time` (aligned with `_raw`) |
-# MAGIC | `team_id` | string | Snyk `org` (tenant scope; parallels Kong `team_id`) |
-# MAGIC | `data` | variant | Full finding JSON as VARIANT (same payload as `_raw`) |
-# MAGIC | `_raw` | variant | Full finding JSON as VARIANT |
-# MAGIC | `_metadata` | struct | Autoloader-style: `file_path`, `file_name`, `file_size`, `file_block_*`, `file_modification_time` |
-# MAGIC | `ingest_time_utc` | timestamp | Pipeline ingest time |
+# MAGIC | Column | Type | Meaning |
+# MAGIC |--------|------|--------|
+# MAGIC | `lw_id` | string | SHA-256 dedupe key |
+# MAGIC | `time` | string | ISO-8601 event time from source |
+# MAGIC | `team_id` | string | Org / tenant |
+# MAGIC | `data` | string | Full JSON payload (same as `_raw`) |
+# MAGIC | `_raw` | string | Full JSON payload for `parse_json` in Lakewatch |
+# MAGIC | `_metadata` | struct | Synthetic file metadata |
+# MAGIC | `ingest_time_utc` | string | Ingest time (ISO) |
 # MAGIC
-# MAGIC **Silver / gold:** Use a separate preset pipeline or jobs to flatten `_raw` to Delta columns and map to OCSF.
-# MAGIC **Lakewatch / DASL:** use `demo/snyk_events_preset.yaml` with `dasl_client.preset_development` to model silver/gold from this bronze.
+# MAGIC **Pipeline spec:** `demo/snyk_demo_pipeline_spec.json` — single object `detections_unified` → `cyber_prod.bronze.snyk_events`.
+# MAGIC Set `org_id` and optional `streams` (`issues,events,vulnerabilities`) in `table_configuration`.
 # MAGIC
-# MAGIC **Prerequisites:** `cyber_prod.snyk.events` from `snyk_bronze_pipeline`; schema `cyber_prod.bronze` exists.
+# MAGIC **Lakewatch:** `demo/snyk_events_preset.yaml` — bronze `parse_json(_raw)` then silver/gold (OCSF). The bronze table must be a **Delta table** (not a Materialized View) for streaming ingestion.
 # MAGIC
-# MAGIC **Lakewatch:** The bronze output must be a **Delta table**, not a **Materialized View**. Lakewatch streams from the
-# MAGIC datasource; Spark does not support `readStream` from MVs (`STREAMING_FROM_MATERIALIZED_VIEW`). If UC shows this name
-# MAGIC as an MV, replace it with a managed Delta table (e.g. re-run this DLT pipeline as the sole writer, or `CREATE TABLE … AS SELECT` from the MV into a new table and point Lakewatch at that table).
-
-# COMMAND ----------
-
-import dlt
-from pyspark.sql import functions as F
-from pyspark.sql.types import LongType, StringType, TimestampType
-
-_SOURCE = "cyber_prod.snyk.events"
-_BRONZE_TABLE = "cyber_prod.bronze.snyk_events"
-
-# COMMAND ----------
-# MAGIC %md ## Bronze — `cyber_prod.bronze.snyk_events`
-
-# COMMAND ----------
-
-
-@dlt.table(
-    name=_BRONZE_TABLE,
-    comment=(
-        "Lakewatch-native bronze (internal_kong-style): lw_id, time, team_id, data, _raw, "
-        "_metadata, ingest_time_utc."
-    ),
-    table_properties={"quality": "bronze"},
-)
-@dlt.expect_or_drop("valid_lw_id", "lw_id IS NOT NULL")
-def bronze_snyk_events():
-    src = spark.table(_SOURCE)
-    json_row = F.to_json(F.struct("*"))
-    raw_variant = F.parse_json(json_row)
-    return src.select(
-        F.sha2(
-            F.concat_ws("|", F.col("id"), F.coalesce(F.col("modification_time"), F.lit(""))),
-            256,
-        ).alias("lw_id"),
-        F.to_timestamp(F.get_json_object(json_row, "$.modification_time")).alias("time"),
-        F.col("org").cast(StringType()).alias("team_id"),
-        raw_variant.alias("data"),
-        raw_variant.alias("_raw"),
-        F.struct(
-            F.lit("snyk://snyk-faker-dev.noop.app/api/events")
-            .cast(StringType())
-            .alias("file_path"),
-            F.lit("snyk_events").cast(StringType()).alias("file_name"),
-            F.lit(0).cast(LongType()).alias("file_size"),
-            F.lit(0).cast(LongType()).alias("file_block_start"),
-            F.lit(0).cast(LongType()).alias("file_block_length"),
-            F.current_timestamp().cast(TimestampType()).alias("file_modification_time"),
-        ).alias("_metadata"),
-        F.current_timestamp().cast(TimestampType()).alias("ingest_time_utc"),
-    )
+# MAGIC **Legacy:** If you still have staging tables `cyber_prod.snyk.events`, migrate with a one-off batch job or drop them after cutover; this notebook no longer runs a DLT transform.
