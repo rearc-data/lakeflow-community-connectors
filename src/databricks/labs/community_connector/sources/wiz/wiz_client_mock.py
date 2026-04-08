@@ -150,6 +150,8 @@ def get_mock_wiz_client(options: dict) -> WizGraphQLClientMock:
         audience       : "wiz-api"           (optional, default shown)
         auth_enabled   : true                (optional, default true)
     """
+    print("RAW config_json:", options["config_json"])
+    print("Options:", options)
     # 🔥 handle JSON secret
     if "config_json" in options:
         config = json.loads(options["config_json"])
