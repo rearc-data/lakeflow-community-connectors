@@ -1640,12 +1640,12 @@ def register_lakeflow_source(spark):
                     time_value=time_val,
                     hash_column_values=[record_id],
                 )
-
+                safe_json = json.dumps(n, default=self.to_json_safe)
                 rows.append({
                     "lw_id": lw_id,
                     "time": time_val,
                     #"_raw_json": json.dumps(n, default=str),  
-                    "_raw_json": json.loads(json.dumps(n, default=self.to_json_safe)),
+                    "_raw_json": VariantVal.parseJson(safe_json),
                     "collected_at": collected_at,
                     "event_type": event_type,
                     "record_id": record_id,
