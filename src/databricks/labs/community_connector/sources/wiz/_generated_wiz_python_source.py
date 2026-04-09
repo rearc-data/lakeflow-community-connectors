@@ -1589,7 +1589,19 @@ def register_lakeflow_source(spark):
         # ─────────────────────────────────────────────────────────────────────────
         # Shared helpers
         # ─────────────────────────────────────────────────────────────────────────
+        def to_json_safe(self, obj):
+            import datetime
+            from decimal import Decimal
 
+            if isinstance(obj, datetime.datetime):
+                return obj.isoformat()
+            if isinstance(obj, datetime.date):
+                return obj.isoformat()
+            if isinstance(obj, Decimal):
+                return float(obj)
+
+            # 👇 important: let json handle valid types
+            raise TypeError(f"Type not serializable: {type(obj)}")
 
         def _to_bronze(self, nodes: list[dict], collected_at: datetime) -> list[dict]:
             rows = []
@@ -1633,7 +1645,7 @@ def register_lakeflow_source(spark):
                     "lw_id": lw_id,
                     "time": time_val,
                     #"_raw_json": json.dumps(n, default=str),  
-                    "_raw_json": n,
+                    "_raw_json": json.loads(json.dumps(n, default=self.to_json_safe)),
                     "collected_at": collected_at,
                     "event_type": event_type,
                     "record_id": record_id,
