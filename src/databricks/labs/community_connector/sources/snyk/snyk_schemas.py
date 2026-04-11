@@ -1,8 +1,52 @@
-from pyspark.sql.types import *
+from pyspark.sql.types import (
+    BooleanType,
+    DoubleType,
+    LongType,
+    StringType,
+    StructField,
+    StructType,
+    TimestampType,
+    VariantType,
+)
 
-SUPPORTED_TABLES = ["organizations", "projects", "issues", "targets", "users", "vulnerabilities"]
+SUPPORTED_TABLES = [
+    "detections_unified",
+    "organizations",
+    "projects",
+    "issues",
+    "targets",
+    "users",
+    "vulnerabilities",
+    "events",
+]
+
+_METADATA_BRONZE = StructType(
+    [
+        StructField("file_path", StringType(), True),
+        StructField("file_name", StringType(), True),
+        StructField("file_size", LongType(), True),
+        StructField("file_block_start", LongType(), True),
+        StructField("file_block_length", LongType(), True),
+        StructField("file_modification_time", TimestampType(), True),
+    ]
+)
+
+# Single-stream bronze for Lakeflow → cyber_prod.bronze.snyk_events (matches Lakewatch bronze: VARIANT + timestamps + rawstr).
+DETECTIONS_UNIFIED_SCHEMA = StructType(
+    [
+        StructField("lw_id", StringType(), False),
+        StructField("time", TimestampType(), True),
+        StructField("team_id", StringType(), True),
+        StructField("data", VariantType(), True),
+        StructField("_raw", VariantType(), True),
+        StructField("rawstr", StringType(), True),
+        StructField("_metadata", _METADATA_BRONZE, True),
+        StructField("ingest_time_utc", TimestampType(), True),
+    ]
+)
 
 TABLE_SCHEMAS = {
+    "detections_unified": DETECTIONS_UNIFIED_SCHEMA,
     "organizations": StructType([
         StructField("id", StringType(), False),
         StructField("name", StringType(), True),
@@ -62,9 +106,41 @@ TABLE_SCHEMAS = {
         StructField("organization_id", StringType(), True),
         StructField("project_id", StringType(), True),
     ]),
+    "events": StructType([
+        StructField("id", StringType(), False),
+        StructField("title", StringType(), True),
+        StructField("severity", StringType(), True),
+        StructField("cvss_score", DoubleType(), True),
+        StructField("language", StringType(), True),
+        StructField("package_name", StringType(), True),
+        StructField("module_name", StringType(), True),
+        StructField("package_manager", StringType(), True),
+        StructField("version", StringType(), True),
+        StructField("primary_fixed_version", StringType(), True),
+        StructField("fixed_in", StringType(), True),
+        StructField("cve_ids", StringType(), True),
+        StructField("exploit", StringType(), True),
+        StructField("org", StringType(), True),
+        StructField("project_name", StringType(), True),
+        StructField("path", StringType(), True),
+        StructField("is_upgradable", BooleanType(), True),
+        StructField("is_patchable", BooleanType(), True),
+        StructField("is_pinnable", BooleanType(), True),
+        StructField("malicious", BooleanType(), True),
+        StructField("disclosure_time", StringType(), True),
+        StructField("publication_time", StringType(), True),
+        StructField("creation_time", StringType(), True),
+        StructField("modification_time", StringType(), True),
+        StructField("event_type", StringType(), True),
+        StructField("description", StringType(), True),
+    ]),
 }
 
 TABLE_METADATA = {
+    "detections_unified": {
+        "ingestion_type": "snapshot",
+        "primary_keys": ["lw_id"],
+    },
     "organizations": {
         "ingestion_type": "snapshot",
         "primary_keys": ["id"],
@@ -87,6 +163,10 @@ TABLE_METADATA = {
         "primary_keys": ["id"],
     },
     "vulnerabilities": {
+        "ingestion_type": "snapshot",
+        "primary_keys": ["id"],
+    },
+    "events": {
         "ingestion_type": "snapshot",
         "primary_keys": ["id"],
     },

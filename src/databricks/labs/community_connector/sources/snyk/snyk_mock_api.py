@@ -37,7 +37,6 @@ the real ``requests.Session`` with ``get_mock_api().get_session()``.
 
 from __future__ import annotations
 
-import threading
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -288,23 +287,23 @@ class SnykMockAPI:
 
 
 # ── singleton management ──────────────────────────────────────────────────────
+# No threading.Lock here — threading.Lock is not picklable and the merge script
+# inlines this module inside register_lakeflow_source, which cloudpickle captures
+# entirely when serializing the DataSource for Spark workers.
 
 _INSTANCE: Optional[SnykMockAPI] = None
-_INSTANCE_LOCK = threading.Lock()
 
 
 def get_mock_api() -> SnykMockAPI:
     """Return the singleton mock API instance, creating it on first call."""
     global _INSTANCE  # noqa: PLW0603
-    with _INSTANCE_LOCK:
-        if _INSTANCE is None:
-            _INSTANCE = SnykMockAPI()
-        return _INSTANCE
+    if _INSTANCE is None:
+        _INSTANCE = SnykMockAPI()
+    return _INSTANCE
 
 
 def reset_mock_api() -> SnykMockAPI:
     """Reset the singleton — call at the start of each test run."""
     global _INSTANCE  # noqa: PLW0603
-    with _INSTANCE_LOCK:
-        _INSTANCE = SnykMockAPI()
-        return _INSTANCE
+    _INSTANCE = SnykMockAPI()
+    return _INSTANCE

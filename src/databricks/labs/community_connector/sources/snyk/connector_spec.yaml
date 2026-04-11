@@ -16,4 +16,6 @@ connection:
         Override Snyk REST API base URL. Defaults to https://api.snyk.io/rest.
         Use for Snyk Single Tenant deployments.
 
-external_options_allowlist: "org_id"
+# Pipeline table_configuration allowlist (per-object): org_id, streams (comma-separated:
+# issues, events, vulnerabilities for ``detections_unified``).
+external_options_allowlist: "org_id,streams"

@@ -1,0 +1,16 @@
+{
+  "connection_name": "snyk_demo_connection",
+  "objects": [
+    {
+      "table": {
+        "source_table": "detections_unified",
+        "destination_catalog": "cyber_prod",
+        "destination_schema": "bronze",
+        "destination_table": "snyk_events",
+        "table_configuration": {
+          "org_id": ""
+        }
+      }
+    }
+  ]
+}

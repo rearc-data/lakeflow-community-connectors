@@ -40,15 +40,15 @@ The agent pauses once to collect credentials for source authentication.
 
 For more control, run each step individually. Replace `{source}` with your connector name.
 
-| Step | Command |
-|------|---------|
-| 1. Research source READ APIs | `/research-source-api for {source}` |
-| 2. Collect credentials | `/authenticate-source for {source}` |
-| 3. Implement connector | `/implement-connector for {source}` |
-| 4. Run tests and fix failures | `/test-and-fix-connector for {source}` |
-| 5a. Generate documentation | `/create-connector-document for {source}` |
-| 5b. Finalize connector spec | `/generate-connector-spec for {source}` |
-| 6. Build and deploy | `/deploy-connector for {source}` |
+| Command | Description |
+|---------|-------------|
+| `/research-source-api for {source} on [these tables] with [doc url]` | Research the source API |
+| `/authenticate-source for {source}` | Set up authentication |
+| `/implement-connector for {source}` | Implement the connector |
+| `/test-and-fix-connector for {source}` | Test and fix |
+| `/create-connector-document for {source}` | Generate documentation |
+| `/generate-connector-spec for {source}` | Generate the connector spec |
+| `/deploy-connector for {source}` | Build and deploy |
 
 **Optional: Write-Back Testing** — Run between steps 4 and 5. Skip for read-only sources or when writes are expensive/risky.
 
@@ -57,11 +57,23 @@ For more control, run each step individually. Replace `{source}` with your conne
 | Research write APIs | `/research-write-api-of-source for {source}` |
 | Implement write-back tests | `/write-back-testing for {source}` |
 
+## Known Limitations
+
+- **Cross-file imports in SDP**: The Spark Declarative Pipeline runtime does not support cross-file module imports for Python Data Source implementations. All connectors must be merged into a single deployable file named `_generated_{source_name}_python_source.py` before deployment. This is handled automatically by the deploy workflow, but can also be run manually:
+
+  ```bash
+  python tools/scripts/merge_python_source.py <source_name>
+  # or regenerate all at once:
+  python tools/scripts/merge_python_source.py all
+  ```
+
+- **Custom connector UI**: The Unity Catalog connection creation UI is not automatically generated from the connector spec. When setting up a custom connector through the UI, you must manually enter the required field names alongside their values.
+
 ## Deploy and Run
 
 Each connector runs as a configurable SDP pipeline. Define a **pipeline spec** to configure tables and destinations.
 
-- **Databricks UI** — Click **"+New"** > **"Add or upload data"** > select the source under **"Community connectors"**. For custom connectors from your own repo, select **"+ Add Community Connector"**.
+- **Databricks UI** — Navigate to the **Add Data** page and scroll to the **Community connectors** section. Select a pre-built source, or select **Custom Connector** to deploy from your own Git repository (provide the source name and repository URL — the system pulls from `main` or `master` by default).
 - **CLI tool** — Run `/deploy-connector` in Cursor or Claude Code for guided deployment, or use the CLI directly. See [tools/community_connector](tools/community_connector/README.md).
 
 ## Project Structure
